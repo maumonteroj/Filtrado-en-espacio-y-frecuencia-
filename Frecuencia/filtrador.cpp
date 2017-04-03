@@ -1,0 +1,187 @@
+//File Management
+#include <iostream>
+#include <fstream>
+#include <string>
+
+//Time management
+#include <ltiTimer.h>
+
+//Images
+#include <ltilib/ltiIOImage.h>  // To read/write images from files (jpg, png, and bmp)
+#include <ltiImage.h>
+#include <ltilib/ltiViewer2D.h> //Display image
+
+//Kernels
+#include <ltiKernel2D.h>
+#include <ltiGaussKernels.h>//Gausian Kernel
+#include <ltiOctagonalKernel.h>//Octagonal
+
+//Fourier
+#include <ltiFFT.h>//Fast fourier transform
+#include <ltiIFFT.h>//Inverse Fast fourier transform
+#include <ltiBoundaryExpansion.h>//Padding
+
+//Matrix handling
+#include <ltiMatrix.h>//Allows for element-wise multiplication
+
+//Math
+#include <ltiMath.h>
+#include <ltiRound.h>
+
+//namespace po = boost::program_options;
+using namespace std;
+using namespace lti;
+
+int main(int ac, char* av[])
+{
+    
+    ioImage loader; //An image loader
+    image img;    //An image container
+    
+    string fileNames[12];
+    fileNames[0] = "64x48.png";
+    fileNames[1] = "230x140.png";
+    fileNames[2] = "400x230.jpg";
+    fileNames[3] = "570x330.png";
+    fileNames[4] = "740x420.png";
+    fileNames[5] = "920x520.jpg";
+    fileNames[6] = "1080x610.png";
+    fileNames[7] = "1245x705.png";
+    fileNames[8] = "1400x800.png";
+    fileNames[9] = "1600x900.png";
+    fileNames[10] = "1750x1000.png";
+    fileNames[11] = "1920x1080.png";
+    
+    
+    kernel2D<float> kern [14];
+    int kernelSizes [14];
+    kernelSizes[0] = 3;
+    kernelSizes[1] = 7;
+    kernelSizes[2] = 15;
+    kernelSizes[3] = 31;
+    kernelSizes[4] = 47;
+    kernelSizes[5] = 63;
+    kernelSizes[6] = 95;
+    kernelSizes[7] = 127;
+    kernelSizes[8] = 191;
+    kernelSizes[9] = 255;
+    kernelSizes[10] = 384;
+    kernelSizes[11] = 511;
+    kernelSizes[12] = 767;
+    kernelSizes[13] = 1023;
+    
+    
+    for(int i = 0; i < 14; i++){
+        gaussKernel2D<float> gauss(kernelSizes[i]);
+        kern[i].castFrom(gauss);
+    }
+    
+    /*
+    Padding
+    */    
+    
+    //Sets parameters
+    eBoundaryType padding = Zero;
+    boundaryExpansion::parameters bepar;
+    bepar.boundaryType = padding;
+    bepar.topBorder = 0;
+    bepar.leftBorder = 0;
+    
+    //    
+    channel chnlA, chnlB;
+    
+    //FFT parameters
+    channel img_F_R, img_F_I, kern_F_R, kern_F_I, productA, productB, result_R, result_I, filtered;
+    //Fast fourier Trasform method
+    fft fft2D;
+    ifft ifft2D;
+
+    int numberOfImages = 4;
+    int numberOfKernels = 4;    
+    double times [numberOfImages*numberOfKernels];
+    
+    //int time = 10000000;//10s+-20us
+    int time = 5000000;//5s+-20us
+    int n;//Holds image size
+    int iterations = 0;
+    matrix<float> mat;
+    kernel2D<float> kernel;
+    
+
+    for(int i = 0; i < numberOfImages; i++){//Iterates over number of images
+        loader.load(fileNames[i], img);
+        for(int j = 0; j < numberOfKernels; j++){//Iterates over number of kernelsZ
+            kernel = kern[j];
+            iterations = 0;
+            
+            timer chron;
+            chron.start();
+            while(chron.getTime() < time){
+                n = iround(pow(2.0f,
+                                 ceil(log(2*lti::max(lti::max(img.rows(), kernel.rows()),
+                                                       lti::max(img.columns(), kernel.columns())))/
+                                      log(2.0f))));
+                
+                bepar.bottomBorder = n-img.rows();
+                bepar.rightBorder = n-img.columns();
+
+                //Creates Padder
+                boundaryExpansion be(bepar);
+
+                //Applies Padding
+                chnlA.castFrom(img);
+                chnlB.castFrom(kernel);
+                be.apply(chnlA);
+                be.apply(chnlB);
+               
+                fft2D.apply(chnlA, img_F_R, img_F_I);
+                fft2D.apply(chnlB, kern_F_R, kern_F_I);
+                
+                //Applies the element by element matrix multiplication
+                productA = mat.emultiply(img_F_R, kern_F_R);
+                productB = mat.emultiply(img_F_I, kern_F_I);
+                result_R = mat.subtract(productA, productB);
+                
+                productA = mat.emultiply(img_F_I, kern_F_R);
+                productB = mat.emultiply(img_F_R, kern_F_I);
+                result_I = productA + productB;
+
+                ifft2D.apply(result_R, result_I, filtered);
+
+
+                //Applies Padding
+                channel chnlOut(img.rows(), img.columns());
+                chnlOut.fill(filtered);
+                iterations++;
+            }
+            chron.stop();
+            times[i + j*numberOfKernels] = chron.getTime()/iterations;
+        }
+    } 
+    
+    
+    ofstream myfile;
+    myfile.open ("time.txt");
+    
+    myfile << "# name: A\n# type: matrix\n# rows: "<< numberOfKernels <<"\n# columns: "<<  numberOfImages << "\n";
+    
+    for(int i = 0; i < numberOfImages; i++){
+        for(int j = 0; j < numberOfKernels; j++){
+            myfile << times[i + j*numberOfKernels] << " ";
+        }
+        myfile << endl;
+    } 
+    
+    
+    myfile.close();
+    
+
+}
+
+
+
+
+
+
+
+
