@@ -35,6 +35,7 @@ using namespace lti;
 int main(int ac, char* av[])
 {
     
+    viewer2D view;
     ioImage loader; //An image loader
     image img;    //An image container
     
@@ -56,23 +57,25 @@ int main(int ac, char* av[])
     kernel2D<float> kern [14];
     int kernelSizes [14];
     kernelSizes[0] = 3;
-    kernelSizes[1] = 7;
-    kernelSizes[2] = 15;
-    kernelSizes[3] = 31;
-    kernelSizes[4] = 47;
-    kernelSizes[5] = 63;
-    kernelSizes[6] = 95;
-    kernelSizes[7] = 127;
-    kernelSizes[8] = 191;
-    kernelSizes[9] = 255;
-    kernelSizes[10] = 384;
-    kernelSizes[11] = 511;
-    kernelSizes[12] = 767;
+    kernelSizes[1] = 5;
+    kernelSizes[2] = 8;
+    kernelSizes[3] = 12;
+    kernelSizes[4] = 19;
+    kernelSizes[5] = 29;
+    kernelSizes[6] = 45;
+    kernelSizes[7] = 70;
+    kernelSizes[8] = 109;
+    kernelSizes[9] = 171;
+    kernelSizes[10] = 267;
+    kernelSizes[11] = 418;
+    kernelSizes[12] = 654;
     kernelSizes[13] = 1023;
     
+    int variance;
     
     for(int i = 0; i < 14; i++){
-        gaussKernel2D<float> gauss(kernelSizes[i]);
+        variance = (kernelSizes[i]+2)*(kernelSizes[i]+2)/36;
+        gaussKernel2D<float> gauss(kernelSizes[i], variance);
         kern[i].castFrom(gauss);
     }
     
@@ -87,6 +90,9 @@ int main(int ac, char* av[])
     bepar.topBorder = 0;
     bepar.leftBorder = 0;
     
+    boundaryExpansion::parameters kernelParm;
+    kernelParm.boundaryType = padding;
+    
     //    
     channel chnlA, chnlB;
     
@@ -96,43 +102,60 @@ int main(int ac, char* av[])
     fft fft2D;
     ifft ifft2D;
 
-    int numberOfImages = 4;
-    int numberOfKernels = 4;    
+    int numberOfImages = 12;
+    int numberOfKernels = 14;    
     double times [numberOfImages*numberOfKernels];
     
     //int time = 10000000;//10s+-20us
-    int time = 5000000;//5s+-20us
-    int n;//Holds image size
-    int iterations = 0;
+    int time = 500000;//500ms+-20us
+    double n;//Holds image size
+    int iterations;
     matrix<float> mat;
     kernel2D<float> kernel;
     
+
+    int top;
+    int side;
 
     for(int i = 0; i < numberOfImages; i++){//Iterates over number of images
         loader.load(fileNames[i], img);
         for(int j = 0; j < numberOfKernels; j++){//Iterates over number of kernelsZ
             kernel = kern[j];
+            chnlB.castFrom(kernel);
             iterations = 0;
-            
             timer chron;
             chron.start();
+            
             while(chron.getTime() < time){
-                n = iround(pow(2.0f,
-                                 ceil(log(2*lti::max(lti::max(img.rows(), kernel.rows()),
-                                                       lti::max(img.columns(), kernel.columns())))/
-                                      log(2.0f))));
+            
+                n = iround(pow(2, ceil(log(2*lti::max((img.rows() + kernel.rows()),
+                                                           (img.columns() + kernel.columns())))/
+                                          log(2.0f))));
+                
+                top = (n-kernel.columns())/2;
+                side = (n-kernel.rows())/2;
+                         
+                kernelParm.topBorder = top;
+                kernelParm.leftBorder = side;
+                kernelParm.bottomBorder = top;
+                kernelParm.rightBorder = side;
                 
                 bepar.bottomBorder = n-img.rows();
                 bepar.rightBorder = n-img.columns();
 
                 //Creates Padder
                 boundaryExpansion be(bepar);
+                boundaryExpansion beKern(kernelParm);
+
 
                 //Applies Padding
                 chnlA.castFrom(img);
-                chnlB.castFrom(kernel);
                 be.apply(chnlA);
-                be.apply(chnlB);
+                beKern.apply(chnlB);
+                
+                //view.show(chnlB);
+                //view.waitKeyPressed();
+               
                
                 fft2D.apply(chnlA, img_F_R, img_F_I);
                 fft2D.apply(chnlB, kern_F_R, kern_F_I);
@@ -148,33 +171,66 @@ int main(int ac, char* av[])
 
                 ifft2D.apply(result_R, result_I, filtered);
 
-
-                //Applies Padding
+                
+                //Inverts padding
                 channel chnlOut(img.rows(), img.columns());
                 chnlOut.fill(filtered);
+                
                 iterations++;
             }
             chron.stop();
-            times[i + j*numberOfKernels] = chron.getTime()/iterations;
+            
+            times[i*numberOfImages + j] = chron.getTime() / iterations;
         }
     } 
     
     
+
+    //Saves time parameters
     ofstream myfile;
     myfile.open ("time.txt");
     
-    myfile << "# name: A\n# type: matrix\n# rows: "<< numberOfKernels <<"\n# columns: "<<  numberOfImages << "\n";
+    myfile << "# name: time\n# type: matrix\n# rows: "<< numberOfKernels <<"\n# columns: "<<  numberOfImages << "\n";
     
     for(int i = 0; i < numberOfImages; i++){
         for(int j = 0; j < numberOfKernels; j++){
-            myfile << times[i + j*numberOfKernels] << " ";
+            myfile << times[i*numberOfImages + j] << " ";
         }
         myfile << endl;
     } 
-    
-    
     myfile.close();
     
+   
+        
+    //Saves gauss kernel size
+    myfile.open ("kernel.txt");
+    
+    myfile << "# name: kernel\n# type: matrix\n# rows: "<< 1 <<"\n# columns: "<<  numberOfKernels << "\n";
+    
+    for(int i = 0; i < numberOfKernels; i++){
+        myfile << kernelSizes[i]*kernelSizes[i] << " ";
+    } 
+    myfile.close();
+
+    //Saves filesSize
+    myfile.open ("imageSize.txt");
+    myfile << "# name: imageSize\n# type: matrix\n# rows: "<< 1 <<"\n# columns: "<<  numberOfImages << "\n";
+    
+    myfile << (64*64)/2 << " ";//64x64
+    myfile << (230*140)/2 << " ";//230x140
+    myfile << (400*230)/2 << " ";//400x230
+    myfile << (570*330)/2 << " ";//570x330
+    myfile << (740*420)/2 << " ";//740x420
+    myfile << (920*520)/2 << " ";//920x520
+    myfile << (1080*610)/2 << " ";//1080x610
+    myfile << (1245*705)/2 << " ";//1245x705
+    myfile << (1400*800)/2 << " ";//1400x800
+    myfile << (1600*900)/2 << " ";//1600x900
+    myfile << (1750*1000)/2 << " ";//1750x1000
+    myfile << (1920*1080)/2 << " ";//1920x1080
+    
+    
+    myfile.close();    
 
 }
 
