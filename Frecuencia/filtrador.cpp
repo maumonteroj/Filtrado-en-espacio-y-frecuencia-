@@ -39,7 +39,10 @@ int main(int ac, char* av[])
     ioImage loader; //An image loader
     image img;    //An image container
     
-    string fileNames[12];
+    int numberOfImages = 12;
+    int numberOfKernels = 14;    
+    
+    string fileNames[numberOfImages];
     fileNames[0] = "64x48.png";
     fileNames[1] = "230x140.png";
     fileNames[2] = "400x230.jpg";
@@ -54,8 +57,8 @@ int main(int ac, char* av[])
     fileNames[11] = "1920x1080.png";
     
     
-    kernel2D<float> kern [14];
-    int kernelSizes [14];
+    kernel2D<float> kern [numberOfKernels];
+    int kernelSizes [numberOfKernels];
     kernelSizes[0] = 3;
     kernelSizes[1] = 5;
     kernelSizes[2] = 8;
@@ -102,11 +105,8 @@ int main(int ac, char* av[])
     fft fft2D;
     ifft ifft2D;
 
-    int numberOfImages = 12;
-    int numberOfKernels = 14;    
     double times [numberOfImages*numberOfKernels];
     
-    //int time = 10000000;//10s+-20us
     int time = 500000;//500ms+-20us
     double n;//Holds image size
     int iterations;
@@ -118,9 +118,12 @@ int main(int ac, char* av[])
     int side;
 
     for(int i = 0; i < numberOfImages; i++){//Iterates over number of images
+        cout << i << endl;
         loader.load(fileNames[i], img);
         for(int j = 0; j < numberOfKernels; j++){//Iterates over number of kernelsZ
+            cout << "\t" << j << endl;
             kernel = kern[j];
+            
             chnlB.castFrom(kernel);
             iterations = 0;
             timer chron;
@@ -152,9 +155,6 @@ int main(int ac, char* av[])
                 chnlA.castFrom(img);
                 be.apply(chnlA);
                 beKern.apply(chnlB);
-                
-                //view.show(chnlB);
-                //view.waitKeyPressed();
                
                
                 fft2D.apply(chnlA, img_F_R, img_F_I);
@@ -170,6 +170,10 @@ int main(int ac, char* av[])
                 result_I = productA + productB;
 
                 ifft2D.apply(result_R, result_I, filtered);
+                
+                
+                //view.show(filtered);
+                //view.waitKeyPressed();
 
                 
                 //Inverts padding
