@@ -17,7 +17,7 @@
 #include <ltiKernel2D.h>
 #include <ltiIOLTI.h>
 #include <cstdlib>
-
+#include <ltiOctagonalKernel.h>
 
 //Convolucion
 #include <ltiConvolution.h>
@@ -68,14 +68,17 @@ int main(int argc,char* argv[]) {
 	int numberOfImages = 12;
     int numberOfKernels = 14;    
     double times [numberOfImages*numberOfKernels];
+    double timesoc [numberOfImages*numberOfKernels];
 
 	int time = 500000;//500ms+-20us
     int iterations;
 
  for(int i = 0; i < numberOfImages; i++){//Iterates over number of images
 	loader.load(fileNames[i],data);
+	cout << i << endl;
 	 for(int j = 0; j < numberOfKernels; j++){//Iterates over number of kernelsZ
 		gaussKernel2D<channel::value_type> kernel(kernelSizes[j],((kernelSizes[j]+2)*(kernelSizes[j]+2)/36));
+		octagonalKernel<channel::value_type > kerneloc(kernelSizes[j]);
 		iterations = 0;
 		chron.start();
 		while(chron.getTime() < time){
@@ -88,6 +91,20 @@ int main(int argc,char* argv[]) {
 		}
 		chron.stop();
 		times[i*numberOfImages + j] = chron.getTime() / iterations;
+		
+		iterations = 0;
+		chron.start();
+		while(chron.getTime() < time){
+			convolution filter;                        // convolution operator
+			convolution::parameters param;             // parameters
+			param.setKernel(kerneloc);                        // use the gauss kernel
+			filter.setParameters(param); 
+			filter.apply(data);
+			iterations++;
+		}
+		chron.stop();
+		timesoc[i*numberOfImages + j] = chron.getTime() / iterations;
+		
 	}
  }
   
@@ -100,6 +117,19 @@ int main(int argc,char* argv[]) {
     for(int i = 0; i < numberOfImages; i++){
         for(int j = 0; j < numberOfKernels; j++){
             myfile << times[i*numberOfImages + j] << " ";
+        }
+        myfile << endl;
+    } 
+    myfile.close();
+    
+//Guardar datos octogonal
+   myfile.open ("timeoc.txt");
+    
+    myfile << "# name: time\n# type: matrix\n# rows: "<< numberOfKernels <<"\n# columns: "<<  numberOfImages << "\n";
+    
+    for(int i = 0; i < numberOfImages; i++){
+        for(int j = 0; j < numberOfKernels; j++){
+            myfile << timesoc[i*numberOfImages + j] << " ";
         }
         myfile << endl;
     } 
